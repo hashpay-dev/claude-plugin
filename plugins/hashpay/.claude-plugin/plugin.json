@@ -1,0 +1,13 @@
+{
+  "name": "hashpay",
+  "version": "1.0.0",
+  "description": "Set up and integrate HashPay — non-custodial USDC/USDT payments straight to your own wallets — from your coding agent, with one secret API key: wallets, webhook endpoint and handler, catalog, checkout embed, and a verified test payment.",
+  "author": {
+    "name": "HashPay",
+    "url": "https://hashpay.dev"
+  },
+  "homepage": "https://hashpay.dev/docs/agent",
+  "repository": "https://github.com/hashpay-dev/claude-plugin",
+  "license": "MIT",
+  "keywords": ["payments", "stablecoin", "usdc", "usdt", "checkout", "webhooks", "non-custodial"]
+}
