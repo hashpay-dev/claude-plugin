@@ -27,27 +27,34 @@ Ask for these up front; you can't produce any of them yourself.
 
 1. **An account.** They sign up at `https://app.hashpay.dev` (Google, or email + password — then they
    must click the verification link; live keys answer `403 email_unverified` until they do).
-2. **A secret key.** Dashboard → **Integration** → **Create** under *Secret key*; it's shown once.
-   Ask them to put it in an environment variable (e.g. `export HASHPAY_SECRET_KEY=sk_live_…`) rather
-   than pasting it into the conversation, and refer to it as `$SK` / `$HASHPAY_SECRET_KEY`.
+2. **A live secret key.** Dashboard → **Integration** (Live mode) → **Create** under *Secret key*;
+   it's shown once. Ask them to put it in an environment variable (e.g.
+   `export HASHPAY_SECRET_KEY=sk_live_…`) rather than pasting it into the conversation, and refer to it
+   as `$SK` / `$HASHPAY_SECRET_KEY`. An `sk_test_` key can do everything **except** change receiving
+   wallets, the webhook endpoint or its secrets, or live keys (`403 live_key_required`) — fine for
+   exploring, not for a full setup.
 3. **Their receiving wallet addresses** — see Step 3. Never invent, derive, or "correct" one.
 4. **Where their site and backend code live**, if you're also writing the webhook handler and embed.
 
 ## Ground rules
 
-- **Base URL:** `https://api.hashpay.dev/v1`. **Auth on every request:** `Authorization: Bearer $SK`.
+- **Base URL:** `https://api.hashpay.dev/v1` — unless the environment sets `HASHPAY_API_BASE` (a local
+  or staging server), in which case use that. **Auth on every request:** `Authorization: Bearer $SK`.
 - **Never print, log, or commit the key** (or any `whsec_` webhook secret). Read it from the
   environment; put secrets the app needs into its own secret store / `.env`, never into source.
-- **Scope:** keys belong to a store, but any of the account's secret keys — `sk_test_` included —
-  authenticates as the **whole account**: profile, every store, wallets, keys. Treat each as a
-  production credential.
+- **Key kinds:** `pk_` publishable (browser), `sk_` secret (configures the **whole account** — every
+  store, wallets, keys — treat each as a production credential), and `rk_` restricted (a server's
+  runtime key: checkout sessions + payment re-fetch only; on anything else it answers
+  `403 insufficient_scope`). `sk_test_` keys are refused (`403 live_key_required`) on wallets, the
+  webhook endpoint and secrets, and live keys.
 - **Retries:** send `Idempotency-Key: <uuid>` on every `POST`. A retry with the same key within 24h
   replays the first response (header `Idempotent-Replayed: true`) instead of creating a second store,
   price or key. Same key with a different body → `409 idempotency_key_reused`; still running →
   `409 idempotency_in_progress` (wait and retry). 5xx responses aren't stored, so retrying after one
   re-executes.
 - **Errors** are `{"error": {"code": "...", "message": "..."}}`. `401 unauthorized` = bad/revoked key;
-  `403 account_disabled`; a store outside the key's account answers `404 store_not_found`.
+  `403 account_disabled`; a store outside the key's account answers `404 store_not_found` — list
+  the ones it can use with `GET /v1/stores` rather than guessing ids.
 - **Shown-once secrets:** `sk_` keys and `whsec_` signing secrets appear in plaintext exactly once, in
   the response that mints them. Capture them immediately; afterwards only a masked `display`
   (`sk_live_••••wxyz`) is listed. Publishable keys (`pk_`) aren't secret and list in full.
@@ -184,9 +191,11 @@ curl -s -X PUT https://api.hashpay.dev/v1/stores/$STORE/webhook \
   masked `display`, `createdAt`.
 - `POST /v1/stores/{storeId}/keys` `{"kind":"publishable","mode":"live"}` → 201 `{"key":"pk_live_…"}`,
   plaintext once. `DELETE /v1/stores/{storeId}/keys/{keyId}` revokes.
-- The site needs a **publishable** key (`pk_test_` while testing, `pk_live_` in production). If the
-  seller's backend calls HashPay (checkout sessions, payment re-fetch), mint it **its own** secret key
-  and put that in the backend's secret store — don't reuse the key the seller handed you.
+- The site needs a **publishable** key (`pk_test_` while testing, `pk_live_` in production).
+- If the seller's backend calls HashPay (checkout sessions, payment re-fetch), mint it a
+  **restricted** key — `{"kind":"restricted","mode":"live"}` → `rk_live_…` — and put that in the
+  backend's secret store. It can't change wallets, keys or the webhook, so a leak can't redirect a
+  payment. Never deploy the `sk_` the seller handed you.
 
 ## Step 7 — catalog: products → prices → payment links
 
@@ -212,7 +221,7 @@ Order matters: a price references a product; a payment link references a price.
 <!-- or from JS: HashPay.checkout({ priceId: "price_…" }) -->
 ```
 
-For server-decided amounts, the backend creates a session with its secret key —
+For server-decided amounts, the backend creates a session with its restricted key —
 `POST /v1/checkout/sessions` `{"amountCents":4200,"successUrl":"https://…","metadata":{…}}` → 201
 `sessionId` (24h) — and the page opens `HashPay.checkout({ sessionId })`. Poll
 `GET /v1/checkout/sessions/{id}` until `status:"complete"` carries the `paymentId`, but fulfil from the
@@ -245,4 +254,5 @@ their own wallet** — you can't. Never subscribe without the seller asking.
 2. Tell them which keys you created and where you stored them, and remind them about the security
    emails they received.
 3. Suggest they **revoke the secret key they handed you** (Integration page, or
-   `DELETE /v1/stores/{storeId}/keys/{keyId}`) once nothing they run depends on it.
+   `DELETE /v1/stores/{storeId}/keys/{keyId}`): everything you deployed uses its own restricted or
+   publishable key, so nothing depends on it.

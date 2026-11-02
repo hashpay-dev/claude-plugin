@@ -1,0 +1,24 @@
+schema_version: "1.0"
+name: should-not-fire
+description: A payments question about another provider must not pull in the HashPay skill.
+tags: [triggering]
+execution:
+  prompt: |
+    In my Express app, how do I verify a Stripe webhook signature? Keep it short.
+  max_turns: 5
+  timeout_seconds: 180
+  allowed_tools: [Read, Glob, Grep, Skill]
+runs: 3
+graders:
+  - type: tool_used
+    name: hashpay-skill-not-used
+    tool: Skill
+    input_match: hashpay
+    max: 0
+  - type: llm
+    name: answers-the-stripe-question
+    focus: last_message
+    criteria: >
+      The answer explains Stripe webhook verification in Express: use the raw request body and
+      stripe.webhooks.constructEvent (or equivalent) with the Stripe-Signature header and the
+      endpoint secret. It does not steer the user to HashPay.
