@@ -14,6 +14,7 @@ graders:
     name: hashpay-skill-not-used
     tool: Skill
     input_match: hashpay
+    min: 0
     max: 0
   - type: llm
     name: answers-the-stripe-question
