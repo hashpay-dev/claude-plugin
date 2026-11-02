@@ -133,10 +133,29 @@ chains it was deployed to — ask which. Tron (`T…`) and Solana (base58) each 
   is wrong: ask the seller to copy the address again **from their wallet app** — never try variations.
   It **can't** catch a typo that forms another valid address (any Solana typo, an all-lowercase EVM
   one) — that's what the read-back is for.
-- `409 duplicate_address` — already on this store.
+- `409 duplicate_address` — already on this store. `409 wallet_limit` — a network already holds 100
+  addresses on this store (the cap).
+- **Several addresses at once** (the seller exported a list, or has many accounts):
+  `POST /v1/stores/{storeId}/wallets/batch` `{"wallets":[{"address":"0x…","networks":[…]},{"address":"T…","network":"tron"}],"dryRun":true}`
+  — up to 100 entries, each shaped like the single add. Send it with `"dryRun": true` first: nothing
+  is saved and you get a verdict per (entry, network) — `add`, `already_present`, `duplicate_in_batch`,
+  `invalid` (with `message`), `over_limit`. Show the seller the list, read it back, get the yes, then
+  send it again without `dryRun`: all-or-nothing (an entry error names it with `error.index`), entries
+  already on the store are skipped rather than refused, one notice email for the whole batch →
+  201 `{added, skipped, store}`.
 - `POST /v1/stores/{storeId}/wallets/copy` `{"fromStoreId":"store_…"}` copies a sibling store's wallets.
 - `GET /v1/stores/{storeId}/wallets`; `DELETE /v1/stores/{storeId}/wallets?network=base&address=0x…`
-  (query params, not a body).
+  (query params, not a body); `POST /v1/stores/{storeId}/wallets/remove`
+  `{"wallets":[{"address":"0x…","networks":[…]}]}` removes many at once.
+
+**How many addresses?** Payments are told apart by (address, amount). A checkout holds its address at
+its price for about 1.5–2 hours (lifetime plus a reuse cooldown); when every address is busy at a
+price, the next buyer is asked one cent more. So a network needs roughly **2 × peak checkouts per
+hour at one price and token** — one address is fine to start. Don't push for more up front: on Tron
+and Solana a fresh address costs the buyer extra fees, and every extra address is one more balance the
+seller has to gather later. `GET /v1/stores/{storeId}/wallets/pool` reports per network how many
+checkouts were bumped in the last 7 days and a `suggestedAddresses` figure; suggest more only when it
+says so.
 
 ## Step 4 — webhook endpoint + handler
 
